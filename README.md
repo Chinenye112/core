@@ -330,6 +330,33 @@ client.soroban.invoke(params, (xdr) =>
 )
 ```
 
+#### Custom contract error maps
+
+`createContractErrorMap` maps your contract's numeric or symbolic error codes
+to messages and remediation hints. `mergeContractErrorMaps` combines maps —
+useful when composing the built-in factory/router maps with application-specific
+ones. `decodeContractErrorSafe` wraps `decodeContractError` with an extra
+safety layer that never throws, even on circular or exotic inputs.
+
+```ts
+import {
+  createContractErrorMap,
+  mergeContractErrorMaps,
+  decodeContractErrorSafe,
+  FACTORY_CONTRACT_ERRORS,
+} from "sorokit-core/soroban";
+
+const myErrors = createContractErrorMap([
+  { code: 100, message: "Vault is locked", remediation: "Wait for the timelock to expire." },
+  { code: 101, message: "Insufficient collateral" },
+]);
+
+const combinedMap = mergeContractErrorMaps(FACTORY_CONTRACT_ERRORS, myErrors);
+
+const decoded = decodeContractErrorSafe(error, { errorMap: combinedMap });
+// { decoded: true, code: "100", message: "Vault is locked", remediation: "Wait …", raw: … }
+```
+
 #### Contract deployment
 
 `buildContractDeploy` validates its configuration before any network call, so a

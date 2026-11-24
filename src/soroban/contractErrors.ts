@@ -282,6 +282,67 @@ function dedupe(codes: string[]): string[] {
   return [...new Set(codes)];
 }
 
+// ─── Custom error map helpers (#39) ──────────────────────────────────────────
+
+/**
+ * Options accepted by {@link decodeContractErrorSafe}.
+ *
+ * `preserveRaw` documents existing behaviour: the raw error value is always
+ * preserved in `DecodedContractError.raw`. Setting this flag does not change
+ * the output — it exists so callers can record their intent in code.
+ */
+export interface ContractErrorDecodeOptions {
+  /** Custom error map to use instead of {@link DEFAULT_CONTRACT_ERROR_MAP}. */
+  errorMap?: ContractErrorMap;
+  /**
+   * When `true`, the raw error value is preserved in the result
+   * (always true; this documents the intent).
+   */
+  preserveRaw?: boolean;
+}
+
+/**
+ * Build a {@link ContractErrorMap} from a flat array of `{ code, message, remediation? }` entries.
+ *
+ * Each numeric code is registered under its `String(code)` key so it can be
+ * resolved by {@link decodeContractError} when the runtime emits a bare number.
+ *
+ * ```ts
+ * const myErrors = createContractErrorMap([
+ *   { code: 100, message: "Vault is locked", remediation: "Wait for the timelock to expire." },
+ *   { code: 101, message: "Insufficient collateral" },
+ * ]);
+ * ```
+ */
+export function createContractErrorMap(
+  entries: Array<{ code: string | number; message: string; remediation?: string }>,
+): ContractErrorMap {
+  const map: ContractErrorMap = {};
+  for (const entry of entries) {
+    const key = String(entry.code);
+    const info: ContractErrorInfo =
+      entry.remediation !== undefined
+        ? { message: entry.message, remediation: entry.remediation }
+        : { message: entry.message };
+    map[key] = info;
+  }
+  return map;
+}
+
+/**
+ * Merge multiple {@link ContractErrorMap} objects into one.
+ *
+ * Later maps take priority over earlier ones for conflicting keys, so you can
+ * overlay application-specific overrides on top of the built-in maps:
+ *
+ * ```ts
+ * const combined = mergeContractErrorMaps(FACTORY_CONTRACT_ERRORS, myErrors);
+ * ```
+ */
+export function mergeContractErrorMaps(...maps: ContractErrorMap[]): ContractErrorMap {
+  return Object.assign({}, ...maps);
+}
+
 /**
  * Resolve an arbitrary contract failure into structured information.
  *
@@ -343,4 +404,37 @@ export function decodeContractError(
     message: originalMessage || "No decodable contract error information",
     raw: error,
   };
+}
+
+/**
+ * Variant of {@link decodeContractError} that is guaranteed never to throw,
+ * even when given exotic inputs such as circular references, deeply nested
+ * objects, or proxy objects that raise on property access.
+ *
+ * ```ts
+ * const decoded = decodeContractErrorSafe(error, { errorMap: myMap });
+ * console.log(decoded.decoded, decoded.message, decoded.remediation);
+ * ```
+ *
+ * @param error   - Raw failure value.
+ * @param options - Optional decode options.
+ * @returns A {@link DecodedContractError} — never throws.
+ */
+export function decodeContractErrorSafe(
+  error: unknown,
+  options?: ContractErrorDecodeOptions,
+): DecodedContractError {
+  try {
+    return decodeContractError(
+      error,
+      options?.errorMap ?? DEFAULT_CONTRACT_ERROR_MAP,
+    );
+  } catch {
+    return {
+      decoded: false,
+      code: null,
+      message: "Failed to decode contract error",
+      raw: null,
+    };
+  }
 }

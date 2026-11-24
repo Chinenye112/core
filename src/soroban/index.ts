@@ -122,6 +122,9 @@ export type {
 } from "./contractMetadataCompatibility";
 export {
   decodeContractError,
+  decodeContractErrorSafe,
+  createContractErrorMap,
+  mergeContractErrorMaps,
   DEFAULT_CONTRACT_ERROR_MAP,
   FACTORY_CONTRACT_ERRORS,
   ROUTER_CONTRACT_ERRORS,
@@ -131,6 +134,7 @@ export {
 export type {
   ContractErrorInfo,
   ContractErrorMap,
+  ContractErrorDecodeOptions,
   DecodedContractError,
 } from "./contractErrors";
 export { ContractInteractionBuilder, createContractInteractionBuilder } from "./contractInteractionBuilder";

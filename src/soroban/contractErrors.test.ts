@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   decodeContractError,
+  decodeContractErrorSafe,
+  createContractErrorMap,
+  mergeContractErrorMaps,
   DEFAULT_CONTRACT_ERROR_MAP,
   FACTORY_CONTRACT_ERRORS,
   ROUTER_CONTRACT_ERRORS,
@@ -186,5 +189,174 @@ describe("contractErrors", () => {
         );
       }
     });
+  });
+});
+
+// ─── New helpers (#39) ────────────────────────────────────────────────────────
+
+describe("createContractErrorMap", () => {
+  it("registers a numeric code as a string key", () => {
+    const map = createContractErrorMap([
+      { code: 100, message: "Vault is locked" },
+    ]);
+    expect(map["100"]).toBeDefined();
+    expect(map["100"]!.message).toBe("Vault is locked");
+  });
+
+  it("registers a string code as-is", () => {
+    const map = createContractErrorMap([
+      { code: "CUSTOM_ERROR", message: "Custom failure" },
+    ]);
+    expect(map["CUSTOM_ERROR"]).toBeDefined();
+    expect(map["CUSTOM_ERROR"]!.message).toBe("Custom failure");
+  });
+
+  it("registers remediation when provided", () => {
+    const map = createContractErrorMap([
+      { code: 42, message: "Something broke", remediation: "Try again later." },
+    ]);
+    expect(map["42"]!.remediation).toBe("Try again later.");
+  });
+
+  it("omits remediation field when not provided", () => {
+    const map = createContractErrorMap([
+      { code: 10, message: "No remediation" },
+    ]);
+    expect(map["10"]!.remediation).toBeUndefined();
+  });
+
+  it("handles an empty entries array", () => {
+    const map = createContractErrorMap([]);
+    expect(Object.keys(map)).toHaveLength(0);
+  });
+
+  it("resolves via decodeContractError using the custom map", () => {
+    const map = createContractErrorMap([
+      { code: 100, message: "Vault is locked", remediation: "Wait for the timelock." },
+    ]);
+    const result = decodeContractError(100, map);
+    expect(result.decoded).toBe(true);
+    expect(result.message).toBe("Vault is locked");
+    expect(result.remediation).toBe("Wait for the timelock.");
+  });
+});
+
+describe("mergeContractErrorMaps", () => {
+  it("merges non-conflicting keys from both maps", () => {
+    const a = createContractErrorMap([{ code: 1, message: "One" }]);
+    const b = createContractErrorMap([{ code: 2, message: "Two" }]);
+    const merged = mergeContractErrorMaps(a, b);
+    expect(merged["1"]!.message).toBe("One");
+    expect(merged["2"]!.message).toBe("Two");
+  });
+
+  it("later map takes priority on conflicting keys", () => {
+    const a = createContractErrorMap([{ code: 1, message: "Original" }]);
+    const b = createContractErrorMap([{ code: 1, message: "Override" }]);
+    const merged = mergeContractErrorMaps(a, b);
+    expect(merged["1"]!.message).toBe("Override");
+  });
+
+  it("merges with an empty map without losing entries", () => {
+    const a = createContractErrorMap([{ code: 5, message: "Five" }]);
+    const merged = mergeContractErrorMaps(a, {});
+    expect(merged["5"]!.message).toBe("Five");
+  });
+
+  it("merges the built-in factory map with a custom map", () => {
+    const custom = createContractErrorMap([
+      { code: 999, message: "App-specific error" },
+    ]);
+    const merged = mergeContractErrorMaps(FACTORY_CONTRACT_ERRORS, custom);
+    expect(merged["PAIR_ALREADY_EXISTS"]).toBeDefined();
+    expect(merged["999"]!.message).toBe("App-specific error");
+  });
+});
+
+describe("decodeContractErrorSafe", () => {
+  it("decodes a known error without throwing", () => {
+    const result = decodeContractErrorSafe("PAIR_ALREADY_EXISTS");
+    expect(result.decoded).toBe(true);
+    expect(result.message).toContain("already exists");
+  });
+
+  it("handles null input safely", () => {
+    expect(() => decodeContractErrorSafe(null)).not.toThrow();
+    const result = decodeContractErrorSafe(null);
+    expect(result.decoded).toBe(false);
+  });
+
+  it("handles undefined input safely", () => {
+    expect(() => decodeContractErrorSafe(undefined)).not.toThrow();
+    const result = decodeContractErrorSafe(undefined);
+    expect(result.decoded).toBe(false);
+  });
+
+  it("handles a circular reference without throwing", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const o: Record<string, any> = {};
+    o["self"] = o;
+    expect(() => decodeContractErrorSafe(o)).not.toThrow();
+  });
+
+  it("preserves the raw value on an unknown error code", () => {
+    const raw = { code: 9999, message: "unknown" };
+    const result = decodeContractErrorSafe(raw);
+    expect(result.raw).toBe(raw);
+  });
+
+  it("accepts a custom error map via options", () => {
+    const map = createContractErrorMap([
+      { code: 77, message: "Custom seventy-seven" },
+    ]);
+    const result = decodeContractErrorSafe(77, { errorMap: map });
+    expect(result.decoded).toBe(true);
+    expect(result.message).toBe("Custom seventy-seven");
+  });
+});
+
+describe("known, unknown, and malformed error values", () => {
+  it("decodes a known symbolic name via a custom map", () => {
+    const map = createContractErrorMap([
+      { code: "VAULT_LOCKED", message: "Vault is locked" },
+    ]);
+    const result = decodeContractError("VAULT_LOCKED", map);
+    expect(result.decoded).toBe(true);
+    expect(result.code).toBe("VAULT_LOCKED");
+  });
+
+  it("returns decoded: false for an unmapped numeric code", () => {
+    const result = decodeContractError(8888, DEFAULT_CONTRACT_ERROR_MAP);
+    expect(result.decoded).toBe(false);
+    expect(result.code).toBe("8888");
+  });
+
+  it("handles an Error object with no message", () => {
+    const e = new Error();
+    e.message = "";
+    const result = decodeContractError(e);
+    expect(result.decoded).toBe(false);
+  });
+
+  it("handles an empty string input", () => {
+    const result = decodeContractError("");
+    expect(result.decoded).toBe(false);
+    expect(result.code).toBeNull();
+  });
+
+  it("handles numeric 0 input", () => {
+    const result = decodeContractError(0);
+    expect(result.decoded).toBe(false);
+    expect(result.code).toBe("0");
+  });
+
+  it("handles an object with a null code property", () => {
+    const result = decodeContractError({ code: null, message: "some failure" });
+    expect(result.decoded).toBe(false);
+    expect(result.message).toContain("some failure");
+  });
+
+  it("handles an object with an array code property without throwing", () => {
+    expect(() => decodeContractError({ code: [1, 2, 3] })).not.toThrow();
   });
 });
