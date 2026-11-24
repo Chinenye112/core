@@ -597,3 +597,14 @@ export type {
   UpgradeEvent,
   ContractUpgradeDetectionOptions,
 } from "./upgradeDetection";
+
+// ─── Authorization entry inspection (#38) ─────────────────────────────────────
+export {
+  inspectAuthEntry,
+  diagnoseAuthorizationFailure,
+} from "./authEntryInspector";
+export type {
+  AuthEntryCredential,
+  AuthEntryInspection,
+  AuthorizationDiagnostic,
+} from "./authEntryInspector";

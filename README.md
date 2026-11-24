@@ -330,6 +330,29 @@ client.soroban.invoke(params, (xdr) =>
 )
 ```
 
+#### Authorization entry inspection
+
+`inspectAuthEntry` and `diagnoseAuthorizationFailure` decompose Soroban auth
+entries into readable credential summaries, making it straightforward to identify
+which invocations require signing and why a simulation failed authorization.
+
+```ts
+import { inspectAuthEntry, diagnoseAuthorizationFailure } from "sorokit-core/soroban";
+
+// Inspect auth entries returned by a simulation response
+const inspection = inspectAuthEntry(authEntry);
+console.log(inspection.credentials);        // top-level per-invocation requirements
+console.log(inspection.nestedInvocations);  // sub-calls that also need signing
+console.log(inspection.missingCredentials); // entries that could not be resolved
+
+// Produce a human-readable diagnostic for a failed invocation
+const diag = diagnoseAuthorizationFailure(error, simulationAuthEntries);
+console.log(diag.message); // "Authorization required for: transfer, approve"
+console.log(diag.hint);    // actionable suggestion
+```
+
+Both functions handle malformed or partial XDR input without throwing.
+
 #### Contract deployment
 
 `buildContractDeploy` validates its configuration before any network call, so a
