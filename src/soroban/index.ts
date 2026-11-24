@@ -597,3 +597,16 @@ export type {
   UpgradeEvent,
   ContractUpgradeDetectionOptions,
 } from "./upgradeDetection";
+
+// ─── Contract spec compatibility (#40) ────────────────────────────────────────
+export {
+  compareContractSpecs,
+  validateContractSpec,
+} from "./contractSpecCompatibility";
+export type {
+  ContractSpec,
+  ContractSpecFunction,
+  SpecCompatibilityReport,
+  SpecCompatibilityChange,
+  SpecCompatibilityStatus,
+} from "./contractSpecCompatibility";
